@@ -1,0 +1,50 @@
+{
+  "hidden_dim": 30,
+  "state_dim": 31,
+  "num_heads": 3,
+  "head_dim": 10,
+  "input_dim": 784,
+  "output_dim": 10,
+  "leaky_slope": 0.01,
+  "bias_constant": -10.0,
+  "d_slot": 10,
+  "train_archs": [
+    [
+      10
+    ],
+    [
+      20,
+      10
+    ],
+    [
+      30,
+      10
+    ],
+    [
+      50,
+      30,
+      10
+    ],
+    [
+      80,
+      10
+    ],
+    [
+      64,
+      32,
+      10
+    ]
+  ],
+  "test_arch": [
+    50,
+    50,
+    10
+  ],
+  "head_layers": [
+    "local_rule_head.Dense_0.kernel",
+    "local_rule_head.Dense_1.kernel",
+    "local_rule_head.Dense_2.kernel",
+    "local_rule_head.Dense_3.kernel",
+    "local_rule_head.Dense_4.kernel"
+  ]
+}

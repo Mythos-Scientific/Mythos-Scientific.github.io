@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MetaNCA — a neural network that trains itself with local rules</title>
+<link rel="icon" href="data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'&gt;&lt;rect width='16' height='16' rx='3' fill='%230d1017'/&gt;&lt;circle cx='8' cy='8' r='3.2' fill='%236c5cff'/&gt;&lt;/svg&gt;">
+
+<meta name="description" content="MetaNCA learns a single local rule that grows the weights of a neural network — no backpropagation at inference, and it generalizes to architectures it never saw. Watch one train MNIST live, and change its shape on the fly.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script>window.MathJax={tex:{inlineMath:[['\\(','\\)']]},chtml:{scale:0.95}};</script>
+<script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="eyebrow">Mythos Scientific · Neural Cellular Automata</div>
+  <h1>The network that grows itself</h1>
+  <p class="standfirst">A neural network is usually trained by backpropagation — a global signal threaded back through every weight. <b>MetaNCA</b> throws that out. It learns a single <em>local rule</em> that looks only at a weight and its immediate neighbors, and applies that rule across the whole network, step after step, until a working classifier emerges from noise. Because the rule is local, it doesn't care how big the network is — train it on a few shapes and it generalizes to architectures it has never seen.</p>
+</header>
+
+<!-- ============ HERO DEMO ============ -->
+<section id="demo" class="demo">
+  <div class="demo-head">
+    <h2>Watch it train MNIST — live</h2>
+    <p>The panel below is a real neural network running in your browser. Its weights start random. Press <b>Play</b> and a trained MetaNCA rule edits the weights, step by step, using only local information — no gradients, no labels fed to the rule. Each step, the rule looks at every weight's neighborhood and a random 80% of the weights apply their update, exactly as in meta-training. Accuracy climbs as structure forms in the weight field.</p>
+  </div>
+
+  <div id="nogpu-msg" class="nogpu-msg" hidden>This demo needs <b>WebGPU</b> (Chrome/Edge 113+, Safari 18+, or Firefox with WebGPU enabled). Everything else on the page still works.</div>
+
+  <div class="demo-grid">
+    <!-- left: weight substrate -->
+    <div class="substrate">
+      <div class="substrate-label">weight field <span>negative <i class="sw teal"></i> 0 <i class="sw coral"></i> positive</span></div>
+      <div id="layers" class="layers"></div>
+    </div>
+
+    <!-- right: metrics -->
+    <aside class="metrics">
+      <div class="metric"><div id="acc-val" class="metric-num">—</div><div class="metric-cap">test accuracy</div></div>
+      <canvas id="acc-curve" width="260" height="90"></canvas>
+      <div class="metric-row">
+        <div><span id="step-val" class="mono">0</span><small>rule steps</small></div>
+        <div><span id="ms-val" class="mono">—</span><small>on your GPU</small></div>
+      </div>
+      <div id="digits" class="digits"></div>
+      <div class="digit-key"><i class="dot correct"></i> correct &nbsp; <i class="dot wrong"></i> wrong</div>
+    </aside>
+  </div>
+
+  <!-- controls -->
+  <div class="controls">
+    <div class="ctl-main">
+      <button id="play" class="btn primary">Play</button>
+      <button id="step" class="btn">Step</button>
+      <button id="reset" class="btn">Reset weights</button>
+      <label class="speed">speed
+        <input id="speed" type="range" min="1" max="16" value="8">
+        <span id="speed-val" class="mono">lvl 8</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="arch-panel">
+    <div class="arch-title">Change the architecture <span>— drag to resize a layer, add or remove hidden layers. The <em>same</em> rule keeps training the new network — and the network isn't reset: surviving weights and their hidden states carry over, only the new slots start fresh.</span></div>
+    <div id="arch-editor" class="arch-editor"></div>
+  </div>
+  <p class="demo-foot">This is the paper's central claim made tangible: the rule was meta-trained on just a handful of small MLPs, yet it grows working weights for shapes it never encountered. Give it a layer width it has never seen and watch accuracy still climb. Better yet, edit the architecture <em>mid-run</em>: because the old weights stay put, you can watch the rule work the change into an already-trained network. Grow a layer and accuracy barely flinches — the grafted slots start near zero and the rule recruits them gradually. Shrink one, or delete it outright, and you carve away trained tissue: accuracy drops, then climbs back as the rule re-knits the network around the wound. That regrowth-after-damage dynamic is the cellular-automata inheritance on full display.</p>
+</section>
+
+<!-- ============ ARTICLE ============ -->
+<article class="prose">
+
+<h2>Why borrow from biology</h2>
+<p>Brains learn without a backward pass. A synapse is adjusted by signals available right where it sits — the activity of the two neurons it connects — not by a global error gradient computed across the whole organism. That locality buys properties deep learning struggles with: brains learn continuously, rewire themselves, tolerate damage, and run on a fraction of the power. And the recipe for building all that circuitry is compressed into a genome far smaller than the circuitry itself.</p>
+<p>MetaNCA takes that compression seriously. Instead of storing a trained network, it stores a <em>rule</em> for producing one — a small program, applied locally and repeatedly, whose collective behavior is a trained model.</p>
+
+<aside class="margin-note">
+<h4>The NCA lineage</h4>
+<p>Neural Cellular Automata grow images from a single seed by applying one learned update rule to every pixel, using only neighboring pixels. MetaNCA keeps the local-rule idea but changes the substrate: the "pixels" are the <em>weights</em> of a neural network, and the "image" that grows is a trained classifier.</p>
+</aside>
+
+<h2>The setup: two networks</h2>
+<p>There are two networks in play, and keeping them straight is the whole trick.</p>
+<ul>
+<li><b>The task network</b> is the thing being trained — an ordinary MLP that maps an MNIST image to ten digit scores. Its weights are what you see churning in the demo.</li>
+<li><b>The local rule network</b> is small, fixed, and shared. It looks at one weight at a time and proposes a tiny change to it. This is the only thing that was learned, and it is what gets reused across every architecture.</li>
+</ul>
+<p>Each weight \(w_{ij}\) also carries a little <em>hidden state</em> vector — scratch memory that travels alongside the weight across update steps, letting the rule store and pass along information beyond the single scalar value. It starts life as a positional code — which layer this weight lives in, which two neurons it connects — and evolves from there, so the rule always knows roughly <em>where</em> it is operating even though it never sees the data.</p>
+
+<h2>What "local" means on a weight graph</h2>
+<p>For a pixel, "neighbors" is obvious — the cells around it. For a weight, MetaNCA defines neighborhood on the network's computation graph. A weight connects an input neuron to an output neuron, so it has two natural neighborhoods:</p>
+<ul>
+<li>its <b>forward</b> neighbors: the other weights that feed the same output neuron, plus the weights in the next layer that this neuron feeds into;</li>
+<li>its <b>backward</b> neighbors: the weights that share its input neuron, plus the weights from the previous layer that produce that input.</li>
+</ul>
+<p>Crucially, the rule never sees <em>how many</em> neighbors there are as a fixed number — it aggregates over whatever neighbors exist. That is exactly why it doesn't care about the size of a layer, and why you can resize the network in the demo and the same rule still applies.</p>
+
+<aside class="margin-note">
+<h4>Weight Transformer <span class="opt">optional detail</span></h4>
+<p>The aggregation is a small <em>linear-attention</em> block (ELU feature map, rotary position codes that encode each weight's layer and neuron indices). It summarizes the forward neighborhood into one vector \(a_f\) and the backward neighborhood into \(a_b\). These, with the weight and its hidden state, form the perception vector \(v=[w,\,\vec h,\,a_f,\,a_b]\), which an MLP head turns into \(\Delta w\) and \(\Delta \vec h\).</p>
+</aside>
+
+<h2>How one step works</h2>
+<p>A single MetaNCA update sweeps the whole network:</p>
+<ol>
+<li>For every weight, gather its forward and backward neighborhoods.</li>
+<li>Summarize each neighborhood with the shared attention block.</li>
+<li>Feed the weight, its hidden state, and the two summaries to the rule's MLP head.</li>
+<li>The head returns \(\Delta w\) and \(\Delta\vec h\); a random 80% of the weights apply their update this step — a stochastic, asynchronous flavor of update inherited from cellular automata, and the same fraction used in meta-training.</li>
+</ol>
+<p>Repeat. In the demo, each rendered frame is exactly one of these sweeps (the speed slider sets how many run per second). The weights start as noise; within a few steps a coherent structure appears in the heatmaps, and accuracy lifts off the 10% floor — the rule reaches its best accuracy in roughly the number of steps it was meta-trained to use, then holds it steady.</p>
+<p>One detail worth stating plainly: <b>the rule never sees the data.</b> It reads weights and hidden states, not images. The image only enters when <em>we</em> measure how good the grown network is — which, during meta-training, is the signal used to improve the rule. (That also means the weight animation and the accuracy readout are computed independently in the demo.)</p>
+
+<h2>Training the rule</h2>
+<p>Meta-training is the one place a gradient appears. We start a fresh random task network, run \(T\) local-rule steps to grow it, measure its classification loss, and backpropagate that loss through the unrolled steps — but only into the <em>rule's</em> parameters. The task network is never updated by gradients; it is only ever edited by the rule. To force generality, the rule is trained against several task-network shapes at once, so it can't overfit the update dynamics to one architecture.</p>
+<p>One more trick matters for what you see in the demo: a <em>sample pool</em>, borrowed from the Growing-NCA literature. If every meta-training episode started from fresh random weights, the rule would only ever be supervised for its first \(T\) steps — nothing would stop it from wrecking a network at step 30. So most episodes instead continue from a pool of networks the rule has already partially grown, with a fraction reset to fresh noise. The rule is thereby trained not just to build a classifier, but to leave a working one alone — which is why you can let the demo run for hundreds of steps and the accuracy holds instead of collapsing.</p>
+
+<h2>Architecture generalization — the payoff</h2>
+<p>Because the rule is defined purely from local neighborhoods, it transfers. The rule driving the demo was meta-trained on a few small MLPs, yet the architecture editor lets you hand it widths and depths it never trained on. A single ~82k-parameter rule stands in for an entire family of networks — which is a striking form of compression: not a trained model, but a compact generator of trained models. The paper also finds that architectural <em>diversity</em> during meta-training is what strengthens this transfer — a rule trained on several shapes generalizes better than one trained on one.</p>
+<p>It is not magic. Generalization is strongest near the capacity range the rule was trained on and degrades for shapes far outside it; the smallest networks have the least room to encode a good classifier. The original work shows the effect across MLPs, CNNs, and ResNets on MNIST and CIFAR-100, scaling to task networks of two million parameters.</p>
+
+<aside class="margin-note">
+<h4>Honest limits</h4>
+<p>The rule isn't conditioned on the data, so it learns a strong <em>initializer-to-solution</em> dynamic rather than data-specific learning. Extending the neighborhood definition to new architecture families (the channel/kernel structure of convolutions, say) takes care, and very small or very large shapes generalize less well.</p>
+</aside>
+
+<h2>About this demo</h2>
+<p>Everything above runs for real in your browser. The rule driving it (~82k parameters) was meta-trained in JAX on six small MLP shapes — hidden layers of 10; 20–10; 30–10; 50–30–10; 80–10; and 64–32–10 — with the sample pool described above. In the reference JAX harness it grows a held-out 784→50→50→10 network to roughly 95% test accuracy in ten steps, and holds that accuracy when run far past its training horizon.</p>
+<p>The in-browser implementation is handwritten WebGPU, and it is verified rather than trusted: against the original JAX code, across several architectures (including held-out ones), every rule step matches to floating-point precision and the resulting classifications are identical. Each step updates a random 80% of weights, matching meta-training. When you edit the architecture, surviving weights and hidden states are carried over on-GPU and only the new slots are re-initialized. The accuracy readout is computed live over a thousand test digits, and "ms/step" is measured on your own hardware.</p>
+
+<footer class="colophon">
+<p>MetaNCA · <span class="mono">Architecture Generalization with MetaNCA</span>, Meet Barot, Daniel Berenberg &amp; Sina Khajehabdollahi. Code: <a href="https://github.com/Mythos-Scientific/meta-nca">github.com/Mythos-Scientific/meta-nca</a>. Demo and write-up by Mythos Scientific.</p>
+</footer>
+
+</article>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

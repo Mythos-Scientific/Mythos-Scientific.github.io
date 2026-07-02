@@ -1,0 +1,1 @@
+{"tensors": {"x": {"offset": 0, "shape": [2000, 784]}, "labels": {"offset": 1568000, "shape": [2000]}, "raw": {"offset": 1570000, "shape": [2000, 784]}, "scaler_mean": {"offset": 3138000, "shape": [784]}, "scaler_scale": {"offset": 3138784, "shape": [784]}}, "total": 3139568}
