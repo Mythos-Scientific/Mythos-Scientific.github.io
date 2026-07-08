@@ -61,15 +61,14 @@ async function main() {
     const Nb = 128 * 128, K = 24;
     const buf = device.createBuffer({ size: Nb * STRIDE * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     const u = device.createBuffer({ size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    const eb = device.createBuffer({ size: Nb * 4, usage: GPUBufferUsage.STORAGE });
-    device.queue.writeBuffer(u, 0, new Uint32Array([Nb, 128, 128, EPOCHS_PER, 256, 1, 0, 1, 0, 0, 0, 0]));  // grid_local=1, rest off
+    device.queue.writeBuffer(u, 0, new Uint32Array([Nb, 128, 128, EPOCHS_PER, 256, 1, 0, 1, 0]));  // grid_local=1, ext_ops=0
     device.queue.writeBuffer(buf, 0, randomCells(Nb));
-    const bind = device.createBindGroup({ layout: simPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: buf } }, { binding: 1, resource: { buffer: u } }, { binding: 2, resource: { buffer: eb } }] });
+    const bind = device.createBindGroup({ layout: simPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: buf } }, { binding: 1, resource: { buffer: u } }] });
     const run = (k) => { const e = device.createCommandEncoder(); const p = e.beginComputePass(); p.setPipeline(simPipe); p.setBindGroup(0, bind); for (let s = 0; s < k; s++) p.dispatchWorkgroups(Math.ceil(Nb / 64)); p.end(); device.queue.submit([e.finish()]); };
     run(4); await device.queue.onSubmittedWorkDone();                 // warm up
     const s0 = performance.now(); run(K); await device.queue.onSubmittedWorkDone();
     const ms = performance.now() - s0;
-    buf.destroy(); u.destroy(); eb.destroy();
+    buf.destroy(); u.destroy();
     return (Nb * K * EPOCHS_PER) / Math.max(ms, 0.1);                 // cell-epochs / ms
   }
   const cellEpochsPerSec = (await benchThroughput()) * 1000;
@@ -85,32 +84,28 @@ async function main() {
   const hoeRead = device.createBuffer({ size: N * STRIDE * 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
   const simU = device.createBuffer({ size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const colU = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-  const energyBuf = device.createBuffer({ size: N * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
-  const energyRead = device.createBuffer({ size: N * 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
   let STEPS = 8;    // sim dispatches per frame — auto-tuned each frame to run as fast as stays smooth
   let mrate = 120;  // mutation "temperature" (parts-per-65536 per cell per frame); 0 = pure races
   let seed = 1;
-  let gridLocal = 1, extOps = 0, economy = 0, regen = 400;   // feature toggles (default = the plain emergent demo)
-  const writeSimParams = () => device.queue.writeBuffer(simU, 0, new Uint32Array([N, GW, GH, EPOCHS_PER, 256, seed, mrate, gridLocal, extOps, economy, regen, 0]));
-  const fillEnergy = () => device.queue.writeBuffer(energyBuf, 0, new Uint32Array(N).fill(40000));
+  let gridLocal = 1, extOps = 0;   // feature toggles (default = the plain emergent demo)
+  const writeSimParams = () => device.queue.writeBuffer(simU, 0, new Uint32Array([N, GW, GH, EPOCHS_PER, 256, seed, mrate, gridLocal, extOps]));
   writeSimParams();
-  fillEnergy();
   device.queue.writeBuffer(colU, 0, new Uint32Array([N, GW, GH, 0]));
 
   const tex = device.createTexture({ size: [GW, GH], format: "rgba8unorm", usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING });
   const sampler = device.createSampler({ magFilter: "nearest", minFilter: "nearest" });
   const colorState = device.createBuffer({ size: N * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });  // per-cell smoothed color (EMA)
 
-  const simBind = device.createBindGroup({ layout: simPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: cellBuf } }, { binding: 1, resource: { buffer: simU } }, { binding: 2, resource: { buffer: energyBuf } }] });
+  const simBind = device.createBindGroup({ layout: simPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: cellBuf } }, { binding: 1, resource: { buffer: simU } }] });
   const colBind = device.createBindGroup({ layout: colorPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: cellBuf } }, { binding: 1, resource: { buffer: colU } }, { binding: 2, resource: tex.createView() }, { binding: 3, resource: { buffer: colorState } }] });
   const renBind = device.createBindGroup({ layout: renderPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: tex.createView() }, { binding: 1, resource: sampler }] });
 
-  const reset = () => { device.queue.writeBuffer(cellBuf, 0, randomCells(N)); fillEnergy(); };
+  const reset = () => { device.queue.writeBuffer(cellBuf, 0, randomCells(N)); };
   reset();
 
   // Read a sample of the soup back to the CPU each tick and compute the metrics we track in the CUDA runs:
-  // HOE (h0 - compressed bpb), diversity (unique genomes), kin (spatial relatedness), copiers (executed),
-  // and n_alive (economy only). Also caches the whole grid for click-to-inspect.
+  // HOE (h0 - compressed bpb), diversity (unique genomes), kin (spatial relatedness), and faithful/lossy/
+  // partial copiers (measured by executing sampled genomes). Also caches the whole grid for click-to-inspect.
   const SAMP = Math.min(2048, N), sstride = Math.max(1, Math.floor(N / SAMP));
   const lastData = new Uint32Array(N * STRIDE);
   let lastValid = false;
@@ -150,14 +145,7 @@ async function main() {
       if (best >= 0.9) faith++; else if (best >= 0.6) lossy++; else if (best >= 0.25) part++;   // same thresholds as the click-inspect verdict
     }
     const faithful = faith / csamp, lossyC = lossy / csamp, partialC = part / csamp;
-    let energyPct = 1;                                              // average battery level (drops as busy copiers drain it)
-    if (economy) {
-      const e2 = device.createCommandEncoder(); e2.copyBufferToBuffer(energyBuf, 0, energyRead, 0, N * 4); device.queue.submit([e2.finish()]);
-      await energyRead.mapAsync(GPUMapMode.READ);
-      const ed = new Uint32Array(energyRead.getMappedRange()); let sum = 0; for (let i = 0; i < N; i++) sum += ed[i]; energyRead.unmap();
-      energyPct = sum / N / 40000;
-    }
-    return { hoe, unique, kin, faithful, lossyC, partialC, energyPct };
+    return { hoe, unique, kin, faithful, lossyC, partialC };
   }
 
   let paused = false, frames = 0, t0 = performance.now(), totalEpochs = 0, lastT = performance.now();
@@ -198,7 +186,6 @@ async function main() {
   const bindToggle = (id, set) => { const el = $(id); if (el) el.onchange = (e) => { set(e.target.checked ? 1 : 0); writeSimParams(); }; };
   bindToggle("t_grid", (v) => gridLocal = v);
   bindToggle("t_ext", (v) => extOps = v);
-  bindToggle("t_econ", (v) => { economy = v; fillEnergy(); });
 
   const overlay = $("overlay"), octx = overlay ? overlay.getContext("2d") : null;
   let sel = null;
@@ -240,7 +227,6 @@ async function main() {
           setTxt("m_faith", (m.faithful * 100).toFixed(0) + "%");
           setTxt("m_lossy", (m.lossyC * 100).toFixed(0) + "%");
           setTxt("m_partial", (m.partialC * 100).toFixed(0) + "%");
-          setTxt("m_energy", economy ? (m.energyPct * 100).toFixed(0) + "%" : "—");
           hoeHist.push(m.hoe); if (hoeHist.length > 160) hoeHist.shift();
           drawSpark(sctx, spark, hoeHist);
         } catch (e) { /* transient map contention — skip this tick */ }
@@ -292,11 +278,10 @@ async function selfTest(device, simMod) {
   const pipe = device.createComputePipeline({ layout: "auto", compute: { module: simMod, entryPoint: "main" } });
   const buf = device.createBuffer({ size: N * STRIDE * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST });
   const uni = device.createBuffer({ size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-  const eb = device.createBuffer({ size: N * 4, usage: GPUBufferUsage.STORAGE });
   const rd = device.createBuffer({ size: N * STRIDE * 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
   const EP = 60;
-  device.queue.writeBuffer(uni, 0, new Uint32Array([N, GW, GH, EP, 256, 0, 0, 1, 0, 0, 0, 0]));  // grid_local=1, no mutation/econ
-  const bind = device.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: buf } }, { binding: 1, resource: { buffer: uni } }, { binding: 2, resource: { buffer: eb } }] });
+  device.queue.writeBuffer(uni, 0, new Uint32Array([N, GW, GH, EP, 256, 0, 0, 1, 0]));  // grid_local=1, no mutation
+  const bind = device.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: buf } }, { binding: 1, resource: { buffer: uni } }] });
 
   let pass = 0, fail = 0;
   for (let g = 0; g < 12; g++) {
