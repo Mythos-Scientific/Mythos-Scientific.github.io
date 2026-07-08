@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Replicator soup — self-replication from random code, in your browser</title>
+<meta name="description" content="Thousands of tiny programs start as random bytes. Nothing rewards copying, yet self-replicators emerge and compete — live on your GPU via WebGPU.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --void: #07090d; --panel: #0d1219; --panel2: #10171f; --edge: #1a2430;
+    --dim: #5f6f7e; --txt: #aab6c3; --bright: #eaf0f6; --accent: #f5b642; --accent-dim: #8a6a2e;
+    --sans: "IBM Plex Sans", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--void); color: var(--txt); font-family: var(--sans); margin: 0; padding: 24px 16px 48px; -webkit-font-smoothing: antialiased; }
+  main { max-width: 640px; margin: 0 auto; }
+
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 0.22em; color: var(--accent); text-transform: uppercase; margin-bottom: 12px; }
+  h1 { font-family: var(--sans); font-weight: 600; font-size: clamp(28px, 7vw, 42px); line-height: 1.05; letter-spacing: -0.02em; color: var(--bright); margin: 0 0 12px; }
+  .dek { font-size: 15px; line-height: 1.6; color: var(--txt); margin: 0 0 22px; max-width: 34em; }
+  .dek b { color: var(--bright); font-weight: 600; }
+
+  #status { font-family: var(--mono); font-size: 11px; color: var(--dim); min-height: 15px; margin-bottom: 10px; }
+
+  /* instrument console */
+  .console { border: 1px solid var(--edge); border-top: 2px solid var(--accent); border-radius: 3px; background: linear-gradient(180deg, var(--panel2), var(--panel)); padding: 16px 18px; margin-bottom: 14px; }
+  .gauge { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .gauge-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); flex: 1 1 100%; }
+  #hoe { font-family: var(--mono); font-weight: 600; font-size: 46px; line-height: 1; color: var(--dim); font-variant-numeric: tabular-nums; transition: color 0.6s; }
+  #spark { background: #0a0f15; border: 1px solid var(--edge); border-radius: 2px; }
+  .scale { font-family: var(--mono); font-size: 10px; color: var(--dim); }
+  .tiles { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--edge); }
+  .stat { display: flex; flex-direction: column; gap: 2px; }
+  .stat .v { font-family: var(--mono); font-size: 17px; font-weight: 500; color: var(--bright); font-variant-numeric: tabular-nums; }
+  .stat .k { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+
+  /* the specimen */
+  #stage { position: relative; width: 100%; margin: 0 auto; line-height: 0; }
+  #cv { image-rendering: pixelated; background: #000; border: 1px solid var(--edge); border-radius: 3px; display: block; width: 100%; aspect-ratio: 1 / 1; height: auto; cursor: crosshair; }
+  #overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+  #inspect { font-family: var(--mono); font-size: 12px; color: var(--txt); line-height: 1.55; min-height: 34px; background: var(--panel); border: 1px solid var(--edge); border-radius: 3px; padding: 9px 11px; margin: 10px 0 0; word-break: break-word; }
+  #inspect b { color: var(--bright); }
+
+  .controls { margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+  button { font-family: var(--mono); font-size: 12px; background: var(--panel2); color: var(--txt); border: 1px solid var(--edge); border-radius: 3px; padding: 7px 12px; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+  button:hover { border-color: var(--accent-dim); color: var(--bright); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ctl { font-family: var(--mono); font-size: 11px; color: var(--dim); display: inline-flex; align-items: center; gap: 6px; }
+  .ctl b { color: var(--bright); min-width: 2.6em; display: inline-block; }
+  input[type=range] { accent-color: var(--accent); vertical-align: middle; }
+  input[type=checkbox] { accent-color: var(--accent); }
+  .toggles { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 2px; }
+  .toggles label { font-family: var(--mono); font-size: 11px; color: var(--txt); cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+  #fps { font-family: var(--mono); font-size: 10px; color: var(--dim); flex: 1 1 100%; margin-top: 2px; }
+
+  .explain { margin-top: 30px; border-top: 1px solid var(--edge); padding-top: 20px; }
+  .explain h2 { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); font-weight: 500; margin: 0 0 10px; }
+  .explain p { font-size: 13px; line-height: 1.65; color: var(--txt); margin: 0 0 12px; }
+  .explain b { color: var(--bright); font-weight: 600; }
+  .explain .term { font-family: var(--mono); color: var(--accent); font-size: 12px; }
+  footer { margin-top: 28px; font-family: var(--mono); font-size: 11px; color: var(--dim); line-height: 1.7; border-top: 1px solid var(--edge); padding-top: 16px; }
+  footer a { color: var(--txt); text-decoration: none; border-bottom: 1px solid var(--accent-dim); }
+  footer a:hover { color: var(--accent); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">Computational Life · WebGPU</div>
+    <h1>Life, compiled from noise</h1>
+    <p class="dek">Thousands of tiny programs start as <b>random bytes</b>. Nothing rewards them for copying — yet self-replicators emerge, mutate, and compete for the grid. Each pixel is one program; its color is a fingerprint of its code. It runs entirely on your GPU. <b>Tap any cell to read its program.</b></p>
+  </header>
+
+  <div id="status">initializing…</div>
+
+  <section class="console">
+    <div class="gauge">
+      <div class="gauge-label">Higher-order entropy — the complexity signal</div>
+      <div id="hoe">—</div>
+      <canvas id="spark" width="200" height="46" title="HOE over time"></canvas>
+      <div class="scale">0 = random · ~3 = replicators dominant</div>
+    </div>
+    <div id="dash" class="tiles">
+      <div class="stat" title="Share of sampled genomes that are unique."><span class="v" id="m_div">—</span><span class="k">diversity</span></div>
+      <div class="stat" title="How much more alike neighbours are than random pairs — spatial family structure."><span class="v" id="m_kin">—</span><span class="k">kin</span></div>
+      <div class="stat" title="Programs that copy nearly all of themselves faithfully into a neighbour."><span class="v" id="m_faith">—</span><span class="k">faithful</span></div>
+      <div class="stat" title="Programs that copy most of themselves (60–90%) — a real but imperfect copy."><span class="v" id="m_lossy">—</span><span class="k">lossy</span></div>
+      <div class="stat" title="Programs that copy a modest fraction of themselves (25–60%) — partial / degraded copies."><span class="v" id="m_partial">—</span><span class="k">partial</span></div>
+      <div class="stat" title="Average energy budget (economy toggle only) — falls as busy copiers drain it."><span class="v" id="m_energy">—</span><span class="k">energy</span></div>
+    </div>
+  </section>
+
+  <div id="stage"><canvas id="cv" width="384" height="384"></canvas><canvas id="overlay"></canvas></div>
+  <div id="inspect">tap a cell to read its program + copier verdict</div>
+
+  <div class="controls">
+    <button id="reset">reset</button>
+    <button id="pause">pause</button>
+    <button id="selftest">self-test VM</button>
+    <span class="ctl" title="Point-mutation rate. 0 = pure no-mutation model (freezes on WebGPU); higher = livelier, too high melts the replicators back to noise.">mutation <input type="range" id="mut" min="0" max="1000" value="120" step="10"> <b id="mutval">120</b></span>
+    <div class="toggles">
+      <label title="2-D grid-neighbour copy reach → diverse coexisting lineages. Off = 1-D reach → a single monoculture sweeps everything."><input type="checkbox" id="t_grid" checked> 2-D topology</label>
+      <label title="Add MATE (cheap local copy), SCATTER (position-locked write), GATHER (read a neighbour) to the op alphabet."><input type="checkbox" id="t_ext"> extended ops</label>
+      <label title="Each op costs energy (FAR is expensive); busy cells drain their budgets → resource competition."><input type="checkbox" id="t_econ"> economy</label>
+    </div>
+    <div id="fps"></div>
+  </div>
+
+  <section class="explain">
+    <h2>What am I looking at</h2>
+    <p>Every pixel is a 128-byte program running a tiny virtual machine. There is <b>no fitness function and no goal</b> — programs just execute, and one of the things a program can do is write bytes into a neighbour. Out of the noise, a program occasionally arises that writes <em>a copy of itself</em> into its neighbours. That's a replicator, and it spreads. This is the core result of the <b>Computational Life</b> line of work: life-like self-replication does not need to be designed or rewarded — it emerges.</p>
+    <p>Color is <b>identity</b>, not a fixed key: a smooth patch of one hue is a family of near-identical replicators (one lineage); a sharp boundary is where two lineages meet. Watching the colors shift is watching lineages mutate, spread, and replace each other.</p>
+    <p>The readouts: <span class="term">HOE</span> (higher-order entropy) is the complexity score — near 0 for random code, climbing to a few bits once structured replicators take over. <span class="term">diversity</span> is how many distinct genomes survive, <span class="term">kin</span> measures spatial family structure, and <span class="term">faithful</span> / <span class="term">lossy</span> / <span class="term">partial</span> split how cleanly programs actually copy themselves — from near-perfect self-copies (≥90%) through imperfect ones down to partial 25–60% copies — measured by running each program. Turn <span class="term">2-D topology</span> off to watch a single monoculture sweep the grid instead; the <span class="term">mutation</span> slider adds the variation that keeps things evolving rather than freezing.</p>
+  </section>
+
+  <footer>
+    Reproduces the emergence result of Agüera y Arcas et al., <a href="https://arxiv.org/abs/2406.19108" target="_blank" rel="noopener">Computational Life (2024)</a>, live on your GPU via WebGPU — a self-modifying bytecode VM, one program per pixel, no fitness function.<br>Needs a WebGPU browser (Chrome/Edge, or recent Firefox/Safari).
+  </footer>
+</main>
+<script type="module" src="main.js"></script>
+</body>
+</html>
