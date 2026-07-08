@@ -71,7 +71,7 @@
 <body>
 <main>
   <header>
-    <div class="eyebrow">Computational Life · WebGPU</div>
+    <div class="eyebrow">GPU-native artificial life · WebGPU</div>
     <h1>Life, compiled from noise</h1>
     <p class="dek">Thousands of tiny programs start as <b>random bytes</b>. Nothing rewards them for copying — yet self-replicators emerge, mutate, and compete for the grid. Each pixel is one program; its color is a fingerprint of its code. It runs entirely on your GPU. <b>Tap any cell to read its program.</b></p>
   </header>
@@ -113,13 +113,15 @@
 
   <section class="explain">
     <h2>What am I looking at</h2>
-    <p>Every pixel is a 128-byte program running a tiny virtual machine. There is <b>no fitness function and no goal</b> — programs just execute, and one of the things a program can do is write bytes into a neighbour. Out of the noise, a program occasionally arises that writes <em>a copy of itself</em> into its neighbours. That's a replicator, and it spreads. This is the core result of the <b>Computational Life</b> line of work: life-like self-replication does not need to be designed or rewarded — it emerges.</p>
+    <p>Every pixel is a 128-byte program running a tiny virtual machine. There is <b>no fitness function and no goal</b> — programs just execute, and one of the things a program can do is write bytes into a neighbour. Out of the noise, a program occasionally arises that writes <em>a copy of itself</em> into its neighbours. That's a replicator, and it spreads. Nothing designed it and nothing rewards it — the replication is fully emergent.</p>
+    <h2 style="margin-top:22px">How this is different</h2>
+    <p><b>This is our own substrate, not a reimplementation.</b> The emergence you're watching echoes Agüera y Arcas et al.'s <em>Computational Life</em> (2024) — but that's the starting line, not the destination. Two things set ours apart. <b>The environment is the real GPU:</b> an organism's world is the actual cost landscape of the silicon — memory locality, and the real time each operation takes — so life evolves to exploit the hardware it runs on. And <b>replication is the floor, not the goal:</b> we're building toward a soup that evolves <b>learning rules and credit assignment</b> — neural networks that grow and adapt — under a metabolic economy where doing useful computation earns the energy to keep running, so selection can favour computation and cooperation, not only copying. <span style="color:var(--dim)">(This browser version is a simplified slice of that larger substrate.)</span></p>
     <p>Color is <b>identity</b>, not a fixed key: a smooth patch of one hue is a family of near-identical replicators (one lineage); a sharp boundary is where two lineages meet. Watching the colors shift is watching lineages mutate, spread, and replace each other.</p>
     <p>The readouts: <span class="term">HOE</span> (higher-order entropy) is the complexity score — near 0 for random code, climbing to a few bits once structured replicators take over. <span class="term">diversity</span> is how many distinct genomes survive, <span class="term">kin</span> measures spatial family structure, and <span class="term">faithful</span> / <span class="term">lossy</span> / <span class="term">partial</span> split how cleanly programs actually copy themselves — from near-perfect self-copies (≥90%) through imperfect ones down to partial 25–60% copies — measured by running each program. Turn <span class="term">2-D topology</span> off to watch a single monoculture sweep the grid instead; the <span class="term">mutation</span> slider adds the variation that keeps things evolving rather than freezing.</p>
   </section>
 
   <footer>
-    Reproduces the emergence result of Agüera y Arcas et al., <a href="https://arxiv.org/abs/2406.19108" target="_blank" rel="noopener">Computational Life (2024)</a>, live on your GPU via WebGPU — a self-modifying bytecode VM, one program per pixel, no fitness function.<br>Needs a WebGPU browser (Chrome/Edge, or recent Firefox/Safari).
+    A Mythos Scientific substrate — a self-modifying bytecode VM, one program per pixel, no fitness function, live on your GPU via WebGPU. Related work: Agüera y Arcas et al., <a href="https://arxiv.org/abs/2406.19108" target="_blank" rel="noopener">Computational Life (2024)</a>.<br>Needs a WebGPU browser (Chrome/Edge, or recent Firefox/Safari).
   </footer>
 </main>
 <script type="module" src="main.js"></script>
