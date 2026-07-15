@@ -191,8 +191,54 @@ training set. Each run is repeated 3 different times.
 <p>
 After training, we evaluate each model by generating weights for 8 different validation architectures
 and computing their accuracy on the FashionMNIST test set.
+As a baseline, we train every possible architecture in the described set to convergence using the
+Adam optimizer. 
+
 </p>
 <h3>Results</h3>
+<p>
+We first calculated the average test accuracy across all heldout architectures (<a href="#fig1">Fig. 1</a>).
+A clear trend is depicted, showing that more architectures begets better performance, saturating 
+at the Adam baseline.
+</p>
+<figure id="fig1">
+<embed src="assets/img/fashion_mnist_fixed_depth.png" alt="Heldout architecture performance"/>
+<figcaption>Average test accuracy across all test architectures for each training setting.
+Black lines correspond to the 95% CI based on 3 independent repititions.
+</figcaption>
+</figure>
+</p>
+<p>
+Our intuition on the saturation towards the Adam baseline is that the set of architectures we use
+for training and validation are simply only so capable. MetaNCA recovering the Adam performance is 
+quite positive, considering it manages to find an update rule that does so without gradients.
+</p>
+
+<h4>Heldout architecture distance to training set</h4>
+<p>
+We do notice in <a href="#fig1">Fig. 1</a> that 8 training architectures only manages to <i>narrowly 
+    outperform</i> over 4 architectures.
+This can perhaps be attributed to the size of the <q>universe</q> of architectures in this study is quite small.
+Four random architectures evidently provide enough coverage to generalization to the heldout set.
+<br/><br/>
+To better understand this phenomenon, we calculate the distance of each heldout architecture to each
+training architecture for each repetition, visualized in <a href="#fig2">Fig. 2</a>.
+For this study, we define the architecture distance between two architectures as the cosine distancebetween each of their <q>architecture vectors</q>: 3-dimensional arrays where the value of the i-th postion is the number of hidden units in the i-th layer of the network. 
+<figure id=fig2">
+<embed src="assets/img/fashion_mnist_heldout_arch_perf.png" alt="Distance to training set."/>
+<figcaption>
+Strip plot of per-heldout-architecture test accuracies colored by their minimum cosine distance to the training set.
+</figcaption>
+</figure>
+<br/>
+<a href="#fig2">Fig. 2</a> suggests that indeed, 4 random architectures tends to provide enough support of 
+the architecture universe to achieve near matched performance to 8 architectures.
+This is, of course, not necessarily the case for all sets of architectures.
+We maintain the intuition that more architectures would beget better performance for more complex architecture
+grids.
+</p>
+<h4>
+
 
 <footer class="colophon">
 <p>MetaNCA · <span class="mono">Architecture Generalization with MetaNCA</span>, Meet Barot, Daniel Berenberg &amp; Sina Khajehabdollahi. Code: <a href="https://github.com/Mythos-Scientific/meta-nca">github.com/Mythos-Scientific/meta-nca</a>. Demo and write-up by Mythos Scientific.</p>
