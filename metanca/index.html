@@ -202,7 +202,7 @@ A clear trend is depicted, showing that more architectures begets better perform
 at the Adam baseline.
 </p>
 <figure id="fig1">
-<embed src="assets/img/fashion_mnist_fixed_depth.png" alt="Heldout architecture performance"/>
+<img src="assets/img/fashion_mnist_fixed_depth.png" alt="Heldout architecture performance">
 <figcaption>Average test accuracy across all test architectures for each training setting.
 Black lines correspond to the 95% CI based on 3 independent repititions.
 </figcaption>
@@ -224,8 +224,8 @@ Four random architectures evidently provide enough coverage to generalization to
 To better understand this phenomenon, we calculate the distance of each heldout architecture to each
 training architecture for each repetition, visualized in <a href="#fig2">Fig. 2</a>.
 For this study, we define the architecture distance between two architectures as the cosine distancebetween each of their <q>architecture vectors</q>: 3-dimensional arrays where the value of the i-th postion is the number of hidden units in the i-th layer of the network. 
-<figure id=fig2">
-<embed src="assets/img/fashion_mnist_heldout_arch_perf.png" alt="Distance to training set."/>
+<figure id="fig2">
+<img src="assets/img/fashion_mnist_heldout_arch_perf.png" alt="Distance to training set.">
 <figcaption>
 Strip plot of per-heldout-architecture test accuracies colored by their minimum cosine distance to the training set.
 </figcaption>
@@ -240,11 +240,15 @@ grids.
 <h4>The relationship between capacity and performance</h4>
 <p>
 We further probe our results by correlating the task network accuracy with the number of parameters,
-depicted in <a href="fig3">Fig. 3</a>. 
+depicted in <a href="#fig3">Fig. 3</a>. 
 As shown, we can see strong correlations between capacity and performance in the training architectures,
 but less apparent in the test set.
-<figure>
-<embed src="assets/img/fashion_mnist_capacity_x_perf.png" alt="Distance to training set."/>
+<figure id="fig3" class="fig-wide">
+<img src="assets/img/fashion_mnist_capacity_x_perf.png" alt="Distance to training set.">
+<figcaption><i>Left, middle</i>: Capacity/performance plots. Each point is an architecture from one
+    of the 3 different repetitions. Colors are indicated in the legend.<i>Right</i>: stratified correlations
+    for each training run.
+</figcaption>
 </figure>
 Furthermore, the rightmost panel indicates a negative relationship between the number of training architectures
 and the capacity-performance correlation; this indicates a notable limitation that requires further 
