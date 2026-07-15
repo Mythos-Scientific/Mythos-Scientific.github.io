@@ -237,8 +237,24 @@ This is, of course, not necessarily the case for all sets of architectures.
 We maintain the intuition that more architectures would beget better performance for more complex architecture
 grids.
 </p>
-<h4>
-
+<h4>The relationship between capacity and performance</h4>
+<p>
+We further probe our results by correlating the task network accuracy with the number of parameters,
+depicted in <a href="fig3">Fig. 3</a>. 
+As shown, we can see strong correlations between capacity and performance in the training architectures,
+but less apparent in the test set.
+<figure>
+<embed src="assets/img/fashion_mnist_capacity_x_perf.png" alt="Distance to training set."/>
+</figure>
+Furthermore, the rightmost panel indicates a negative relationship between the number of training architectures
+and the capacity-performance correlation; this indicates a notable limitation that requires further 
+investigation.
+One possible explanation to this phenomenon could be some kind of convergence to a mean.
+Perhaps high parameter heldout architectures are under-utilized while low parameter architectures perform well.
+Our intuition derives from the interpretation of MetaNCA as a compresssion algorithm.
+The learned update rule <i>may</i> distill dynamics from high parameter architectures into lower parameter ones and
+vise versa, which could possibly have a wide variety of potential applications.
+</p>
 
 <footer class="colophon">
 <p>MetaNCA · <span class="mono">Architecture Generalization with MetaNCA</span>, Meet Barot, Daniel Berenberg &amp; Sina Khajehabdollahi. Code: <a href="https://github.com/Mythos-Scientific/meta-nca">github.com/Mythos-Scientific/meta-nca</a>. Demo and write-up by Mythos Scientific.</p>
