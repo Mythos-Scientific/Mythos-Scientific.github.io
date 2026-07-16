@@ -132,10 +132,137 @@
 <p>Everything above runs for real in your browser. The rule driving it (~82k parameters) was meta-trained in JAX on six small MLP shapes — hidden layers of 10; 20–10; 30–10; 50–30–10; 80–10; and 64–32–10 — with the sample pool described above. In the reference JAX harness it grows a held-out 784→50→50→10 network to roughly 95% test accuracy in ten steps, and holds that accuracy when run far past its training horizon.</p>
 <p>The in-browser implementation is handwritten WebGPU, and it is verified rather than trusted: against the original JAX code, across several architectures (including held-out ones), every rule step matches to floating-point precision and the resulting classifications are identical. Each step updates a random 80% of weights, matching meta-training. When you edit the architecture, surviving weights and hidden states are carried over on-GPU and only the new slots are re-initialized. The accuracy readout is computed live over a thousand test digits, and "ms/step" is measured on your own hardware.</p>
 
+<h2>Studying MetaNCA scaling</h2>
+<p>
+MetaNCA relies on the weight transformer to <i>learn</i> the cell hidden state aggregation operator.
+Despite the fact that our model is used for parameter generation, the parallels to language modeling
+are quite apparent: the weight transformer may be viewed as a model that learns the <i>language</i>
+of cell latents.
+</p>
+<aside class="margin-note">
+<h4>Architectures vs. Documents</h4>
+<p>
+Although motivating, we acknowledge the analogy is not entirely exact.
+In theory, MetaNCA can be trained on an infinite number of parameterizations of the same
+architecture.
+Of course in practice, each architecture is randomly initialized with a <cite><a href="https://flax.readthedocs.io/en/stable/api_reference/flax.nnx/nn/initializers.html">standard weight initializer</a></cite>, making the likelihood of an
+arbitrary weight configuration exceedingly low.
+</br>
+</br>
+In either case, documents in MetaNCA actually serve as a sample from a distribution of possible 
+initial weight configurations, rather than a single example (as in language modeling).
+</p>
+</aside>
+<p>
+<ul>
+    <li>LLMs learn <b style="color: red;">compositions</b> of 
+        <b style="color: green;">tokens</b> in text <b style="color: blue;">documents</b></li>
+    <li>MetaNCA learn <b style="color: red;">configurations</b> of 
+        <b style="color: green;">hidden states/weights</b> in task <b style="color: blue;">architectures</b>.
+</ul>
+This analogy motivates investigation into the scaling behavior of MetaNCA, in data as well as model capacity.
+There are <i>so many questions</i> to answer here!
+
+In this section though, we shed light on exactly one:
+  <blockquote style="border-left: 3px solid #ccc; margin: 1.5em 10px; padding: 0.5em 10px;">
+      What is the relationship between <b>scaling the number of training architectures</b>and <b>heldout task network performance</b>? 
+  </blockquote>
+
+We would like to understand better the ability of MetaNCA to <strong>generalize to unseen architectures</strong>.
+<br/><br/>
+Of course, architecture generalization for MetaNCA could mean <i>either</i> interpolation (the ability to adjust to unseen architectures
+<i>within</i> architecture grid)
+<i>or</i> extrapolation (ability to adjust outside of the grid specifications of the training architectures). 
+The results below generally address the former.
+
+
+<h3>Experimental setup</h3>
+
+<p>
+We train 4 different MetaNCA models with<cite><a href="https://arxiv.org/abs/1708.07747">FashionMNIST</a></cite> on a fixed training budget (1.2K metaepochs), 
+exposing them to 1, 2, 4, and 8 training architectures.
+
+Each architecture is an MLP with 3 hidden layers of nonincreasing dimensionalities ranging between
+16 and 128 hidden units.
+
+We hold out the same architectures for every training run, randomly selecting the architecture 
+training set. Each run is repeated 3 different times.
+</p>
+<p>
+After training, we evaluate each model by generating weights for 8 different validation architectures
+and computing their accuracy on the FashionMNIST test set.
+As a baseline, we train every possible architecture in the described set to convergence using the
+Adam optimizer. 
+
+</p>
+<h3>Results</h3>
+<p>
+We first calculated the average test accuracy across all heldout architectures (<a href="#fig1">Fig. 1</a>).
+A clear trend is depicted, showing that more architectures begets better performance, saturating 
+at the Adam baseline.
+</p>
+<figure id="fig1">
+<img src="assets/img/fashion_mnist_fixed_depth.png" alt="Heldout architecture performance">
+<figcaption>Average test accuracy across all test architectures for each training setting.
+Black lines correspond to the 95% CI based on 3 independent repititions.
+</figcaption>
+</figure>
+</p>
+<p>
+Our intuition on the saturation towards the Adam baseline is that the set of architectures we use
+for training and validation are simply only so capable. MetaNCA recovering the Adam performance is 
+quite positive, considering it manages to find an update rule that does so without gradients.
+</p>
+
+<h4>Heldout architecture distance to training set</h4>
+<p>
+We do notice in <a href="#fig1">Fig. 1</a> that 8 training architectures only manages to <i>narrowly 
+    outperform</i> over 4 architectures.
+This can perhaps be attributed to the size of the <q>universe</q> of architectures in this study is quite small.
+Four random architectures evidently provide enough coverage to generalization to the heldout set.
+<br/><br/>
+To better understand this phenomenon, we calculate the distance of each heldout architecture to each
+training architecture for each repetition, visualized in <a href="#fig2">Fig. 2</a>.
+For this study, we define the architecture distance between two architectures as the cosine distancebetween each of their <q>architecture vectors</q>: 3-dimensional arrays where the value of the i-th postion is the number of hidden units in the i-th layer of the network. 
+<figure id="fig2">
+<img src="assets/img/fashion_mnist_heldout_arch_perf.png" alt="Distance to training set.">
+<figcaption>
+Strip plot of per-heldout-architecture test accuracies colored by their minimum cosine distance to the training set.
+</figcaption>
+</figure>
+<br/>
+<a href="#fig2">Fig. 2</a> suggests that indeed, 4 random architectures tends to provide enough support of 
+the architecture universe to achieve near matched performance to 8 architectures.
+This is, of course, not necessarily the case for all sets of architectures.
+We maintain the intuition that more architectures would beget better performance for more complex architecture
+grids.
+</p>
+<h4>The relationship between capacity and performance</h4>
+<p>
+We further probe our results by correlating the task network accuracy with the number of parameters,
+depicted in <a href="#fig3">Fig. 3</a>. 
+As shown, we can see strong correlations between capacity and performance in the training architectures,
+but less apparent in the test set.
+<figure id="fig3" class="fig-wide">
+<img src="assets/img/fashion_mnist_capacity_x_perf.png" alt="Distance to training set.">
+<figcaption><i>Left, middle</i>: Capacity/performance plots. Each point is an architecture from one
+    of the 3 different repetitions. Colors are indicated in the legend.<i>Right</i>: stratified correlations
+    for each training run.
+</figcaption>
+</figure>
+Furthermore, the rightmost panel indicates a negative relationship between the number of training architectures
+and the capacity-performance correlation; this indicates a notable limitation that requires further 
+investigation.
+One possible explanation to this phenomenon could be some kind of convergence to a mean.
+Perhaps high parameter heldout architectures are under-utilized while low parameter architectures perform well.
+Our intuition derives from the interpretation of MetaNCA as a compresssion algorithm.
+The learned update rule <i>may</i> distill dynamics from high parameter architectures into lower parameter ones and
+vise versa, which could possibly have a wide variety of potential applications.
+</p>
+
 <footer class="colophon">
 <p>MetaNCA · <span class="mono">Architecture Generalization with MetaNCA</span>, Meet Barot, Daniel Berenberg &amp; Sina Khajehabdollahi. Code: <a href="https://github.com/Mythos-Scientific/meta-nca">github.com/Mythos-Scientific/meta-nca</a>. Demo and write-up by Mythos Scientific.</p>
 </footer>
-
 </article>
 
 <script type="module" src="app.js"></script>

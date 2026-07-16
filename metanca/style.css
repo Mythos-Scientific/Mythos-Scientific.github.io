@@ -114,6 +114,11 @@ input[type=range]{accent-color:var(--rule)}
 .prose li{margin:.4rem 0}
 .prose a{color:var(--rule);text-decoration:underline;text-underline-offset:2px;text-decoration-thickness:1px}
 
+/* wide figures: center on the column, hanging equally off both sides */
+.prose .fig-wide{margin:1.6rem 0}
+.prose .fig-wide img{display:block;max-width:min(64rem,calc(100vw - 3rem));
+  margin-left:50%;transform:translateX(-50%)}
+
 /* margin notes */
 .margin-note{background:#eef0f6;border-left:3px solid var(--rule);border-radius:0 8px 8px 0;
   padding:1rem 1.2rem;margin:1.6rem 0;font-size:.96rem;color:var(--ink-soft)}
