@@ -32,6 +32,7 @@
     <div class="substrate">
       <div class="substrate-label">weight field <span>negative <i class="sw teal"></i> 0 <i class="sw coral"></i> positive</span></div>
       <div id="layers" class="layers"></div>
+      <p class="arch-hint">Edit the architecture in place by dragging a layer's slider to resize it, <b>+</b> inserts a layer, <b>&times;</b> removes it. The same rule keeps training the new network. The rule was meta-trained on three architectures: <span class="archs">[784,&thinsp;10]</span>, <span class="archs">[784,&thinsp;30,&thinsp;10]</span>, and <span class="archs">[784,&thinsp;50,&thinsp;30,&thinsp;10]</span>. More than two hidden layers, or a layer wider than 50, is extrapolation.</p>
     </div>
     </div>
 
@@ -54,17 +55,13 @@
       <button id="play" class="btn primary">Play</button>
       <button id="step" class="btn">Step</button>
       <button id="reset" class="btn">Reset weights</button>
-      <label class="speed">speed
-        <input id="speed" type="range" min="1" max="16" value="8">
-        <span id="speed-val" class="mono">lvl 8</span>
+      <label class="speed">speed cap
+        <input id="speed" type="range" min="1" max="21" value="10">
+        <span id="speed-val" class="mono">5.0/s</span>
       </label>
     </div>
   </div>
 
-  <div class="arch-panel">
-    <div class="arch-title">Change the architecture. <span>Drag to resize a layer, add or remove hidden layers. The same rule keeps training the new network, and the network isn't reset: surviving weights and their hidden states carry over, only the new slots start fresh.</span></div>
-    <div id="arch-editor" class="arch-editor"></div>
-  </div>
 </section>
 
 <!-- ============ INTRO ============ -->

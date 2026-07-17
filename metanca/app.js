@@ -15,22 +15,27 @@ const DIGIT_SAMPLES = 24;
 const MAX_LAYERS = 4;
 const MIN_W = 4, MAX_W = 200;
 
+// crisp line icons for the weight-field controls (inherit color via currentColor)
+const SVG_ARROW = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h14M12 5.5l6.5 6.5-6.5 6.5"/></svg>`;
+const SVG_PLUS = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5.5v13M5.5 12h13"/></svg>`;
+const SVG_X = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>`;
+
 const $ = (s) => document.querySelector(s);
 const els = {};
 let engine, mnist, ruleBundle, device;
 let arch = [50, 30, OUTPUT_DIM];   // hidden... + output; input 784 implicit
-let playing = false, steps = 0, speed = 8;  // speed 1..16 (higher = more steps/sec)
+let playing = false, steps = 0, targetRate = 5;  // target steps/sec; Infinity = uncapped ("max")
 let accHistory = [];
-let lastStepMs = 0;
+let lastStepAt = 0, stepRate = 0;   // wall-clock cadence -> measured steps/sec readout
 
 // ---------- weight colormap: teal (neg) <- dark substrate -> coral (pos) ----------
 const SUBSTRATE = [13, 16, 23];
-const TEAL = [31, 158, 143];
-const CORAL = [232, 98, 58];
+const TEAL = [56, 214, 190];
+const CORAL = [255, 124, 80];
 function colormap(v, scale) {
   let t = Math.max(-1, Math.min(1, v / scale));
   const dir = t >= 0 ? CORAL : TEAL;
-  const m = Math.pow(Math.abs(t), 0.8);
+  const m = Math.pow(Math.abs(t), 0.42);
   return [
     SUBSTRATE[0] + m * (dir[0] - SUBSTRATE[0]),
     SUBSTRATE[1] + m * (dir[1] - SUBSTRATE[1]),
@@ -69,38 +74,97 @@ function drawHeatmap(canvas, tensor, scale) {
     }
   ctx.putImageData(img, 0, 0);
   const dc = canvas.getContext("2d");
-  dc.imageSmoothingEnabled = false;
+  // heavy row downsampling (e.g. 784 rows) reads better smoothed; crisp otherwise
+  dc.imageSmoothingEnabled = inD / canvas.height > 3;
   dc.clearRect(0, 0, canvas.width, canvas.height);
-  // fit preserving aspect, centered
-  const s = Math.min(canvas.width / outD, canvas.height / inD);
-  const w = outD * s, h = inD * s;
-  dc.drawImage(off, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+  // fill the canvas — its aspect is pre-clamped to the matrix's in buildLayerField,
+  // so ordinary layers keep their true aspect and extreme ones are gently compressed
+  dc.drawImage(off, 0, 0, canvas.width, canvas.height);
 }
 
-function renderHeatmaps(params) {
+// Build the weight-field DOM *and* the inline architecture controls. Called once
+// per arch change (rebuild / morph). Per-step redraws go through drawHeatmaps
+// (canvas pixels only), so a slider being dragged is never torn down mid-drag.
+let layerCanvases = [];
+function buildLayerField() {
   els.layers.innerHTML = "";
+  layerCanvases = [];
   const dims = [INPUT_DIM, ...arch];
+  const hiddenCount = arch.length - 1;        // editable layers (the output is fixed)
+  const inSpans = [];                          // matrix L's input-dim label (driven by arch[L-1])
+
+  // "+" affordance on the arrow before matrix `at`; inserts a fresh hidden layer
+  // there. No gap before the first matrix — inserting ahead of the input reads awkward.
+  const insertGap = (at) => {
+    const g = document.createElement("div");
+    g.className = "flow-gap";
+    const ar = document.createElement("span"); ar.className = "flow"; ar.innerHTML = SVG_ARROW; g.appendChild(ar);
+    if (hiddenCount < MAX_LAYERS) {
+      const b = document.createElement("button");
+      b.className = "gap-add"; b.innerHTML = SVG_PLUS; b.title = "insert a layer here";
+      b.onclick = () => { if (morphing) return; arch.splice(at, 0, 32); morphTo({ type: "add", at }); };
+      g.appendChild(b);
+    }
+    els.layers.appendChild(g);
+  };
+
   for (let L = 0; L < arch.length; L++) {
+    if (L > 0) insertGap(L);                    // arrow + "+" between matrices -> insert at arch position L
+
+    const rows = dims[L], cols = dims[L + 1];  // shape known from dims; pixels filled by drawHeatmaps
+    const BASE = 260, CLAMP = 2.6;
+    const a = Math.max(1 / CLAMP, Math.min(CLAMP, rows / cols));
+    const cv = document.createElement("canvas");
+    if (a >= 1) { cv.height = BASE; cv.width = Math.round(BASE / a); }
+    else { cv.width = BASE; cv.height = Math.round(BASE * a); }
+    layerCanvases[L] = cv;
+
+    const wrap = document.createElement("figure");
+    wrap.className = "layer-fig";
+    wrap.appendChild(cv);
+
+    const editable = L < arch.length - 1;      // hidden layer; its output width = arch[L]
+    const name = L === 0 ? "input→h1" : (editable ? `h${L}→h${L + 1}` : `h${L}→out`);
+    const cap = document.createElement("figcaption");
+    cap.innerHTML = `<span class="lname">${name}</span>` +
+      `<span class="ldim"><span class="d-in">${dims[L]}</span>×<span class="d-out${editable ? " edit" : ""}">${dims[L + 1]}</span></span>`;
+    wrap.appendChild(cap);
+    inSpans[L] = cap.querySelector(".d-in");
+    const outSpan = cap.querySelector(".d-out");
+
+    if (editable) {
+      const range = document.createElement("input");
+      range.type = "range"; range.min = MIN_W; range.max = MAX_W; range.value = arch[L];
+      range.className = "layer-slider"; range.title = "drag to resize this layer";
+      range.style.width = cv.width + "px";   // match the canvas so the figure isn't widened past it
+      range.oninput = () => {
+        arch[L] = +range.value;
+        outSpan.textContent = range.value;                              // this matrix's output …
+        if (inSpans[L + 1]) inSpans[L + 1].textContent = range.value;   // … is the next matrix's input
+      };
+      range.onchange = () => { if (!morphing) morphTo({ type: "resize" }); };
+      wrap.appendChild(range);
+
+      if (L > 0) {   // first hidden layer is anchored to the input — not removable
+        const rm = document.createElement("button");
+        rm.className = "layer-rm"; rm.innerHTML = SVG_X; rm.title = "remove this layer";
+        rm.onclick = () => { if (morphing) return; arch.splice(L, 1); morphTo({ type: "remove", at: L }); };
+        wrap.appendChild(rm);
+      }
+    }
+    els.layers.appendChild(wrap);
+  }
+}
+
+// Per-step: redraw the weight-field canvases only (DOM + controls left intact).
+function drawHeatmaps(params) {
+  for (let L = 0; L < arch.length; L++) {
+    const cv = layerCanvases[L];
+    if (!cv) continue;
     const t = params[`Dense_${L}.kernel`];
     let scale = 0;
     for (let i = 0; i < t.data.length; i++) scale = Math.max(scale, Math.abs(t.data[i]));
-    scale = scale || 1;
-    const wrap = document.createElement("figure");
-    wrap.className = "layer-fig";
-    const cv = document.createElement("canvas");
-    const tall = t.shape[0] > 120;
-    cv.width = 150; cv.height = tall ? 220 : 150;
-    wrap.appendChild(cv);
-    const cap = document.createElement("figcaption");
-    cap.innerHTML = `<span class="lname">${L === 0 ? "input→h1" : (L === arch.length - 1 ? `h${L}→out` : `h${L}→h${L + 1}`)}</span><span class="ldim">${dims[L]}×${dims[L + 1]}</span>`;
-    wrap.appendChild(cap);
-    els.layers.appendChild(wrap);
-    drawHeatmap(cv, t, scale);
-    if (L < arch.length - 1) {
-      const arrow = document.createElement("div");
-      arrow.className = "flow"; arrow.textContent = "→";
-      els.layers.appendChild(arrow);
-    }
+    drawHeatmap(cv, t, scale || 1);
   }
 }
 
@@ -175,6 +239,7 @@ function rebuild() {
   const hp = initHiddenPosenc(arch);
   engine.setArch([...arch], params, hp, hp);
   steps = 0; accHistory = [];
+  buildLayerField();
   refresh(params);
   syncStatus();
 }
@@ -190,6 +255,7 @@ async function morphTo(op) {
     const map = archEditMap(engine.arch, arch, op);
     const { params, hidden, posenc } = carryOver(oldParams, oldHidden, arch, map, randInit);
     engine.setArch([...arch], params, hidden, posenc);
+    buildLayerField();
     await refresh(params);
     syncStatus();
   } finally {
@@ -199,7 +265,7 @@ async function morphTo(op) {
 
 async function refresh(paramsMaybe) {
   const params = paramsMaybe || await engine.readWeights();
-  renderHeatmaps(params);
+  drawHeatmaps(params);
   const acc = computeAccuracy(params);
   accHistory.push(acc);
   if (accHistory.length > 400) accHistory.shift();
@@ -210,65 +276,35 @@ async function refresh(paramsMaybe) {
 
 function syncStatus() {
   els.steps.textContent = steps;
-  els.ms.textContent = lastStepMs ? lastStepMs.toFixed(1) + " ms/step" : "—";
+  els.ms.textContent = stepRate ? stepRate.toPrecision(3) + "/s" : "—";
   els.play.textContent = playing ? "Pause" : "Play";
   els.play.classList.toggle("on", playing);
 }
 
 // ---------- main loop ----------
-let frameAcc = 0;
 async function loop() {
   if (playing && !morphing) {
-    frameAcc++;
-    const stride = Math.max(1, 17 - speed);   // speed 16 -> every frame; speed 1 -> every 16 frames
-    if (frameAcc >= stride) {
-      frameAcc = 0;
-      const t0 = performance.now();
+    const interval = targetRate === Infinity ? 0 : 1000 / targetRate;   // ms between steps ("max" -> 0)
+    if (!lastStepAt || performance.now() - lastStepAt >= interval) {
+      const t = performance.now();
+      if (lastStepAt) stepRate = 1000 / (t - lastStepAt);   // start-to-start period -> actual steps/sec
+      lastStepAt = t;
       engine.step(1);                          // exactly one rule step...
       steps++;
       await refresh();                         // ...rendered every step (readWeights forces completion)
-      lastStepMs = performance.now() - t0;
       syncStatus();
     }
+  } else {
+    lastStepAt = 0;                            // reset so the rate is measured fresh on resume
   }
   requestAnimationFrame(loop);
-}
-
-// ---------- architecture editor ----------
-function renderArchEditor() {
-  const box = els.archEditor; box.innerHTML = "";
-  const hidden = arch.slice(0, -1);
-  const fixedIn = document.createElement("div"); fixedIn.className = "arch-node fixed"; fixedIn.innerHTML = `<b>784</b><small>input</small>`; box.appendChild(fixedIn);
-  hidden.forEach((w, i) => {
-    const node = document.createElement("div"); node.className = "arch-node";
-    node.innerHTML = `<b>${w}</b><small>hidden ${i + 1}</small>`;
-    const range = document.createElement("input"); range.type = "range"; range.min = MIN_W; range.max = MAX_W; range.value = w;
-    range.oninput = () => { arch[i] = +range.value; node.querySelector("b").textContent = range.value; };
-    range.onchange = () => morphTo({ type: "resize" });
-    node.appendChild(range);
-    if (hidden.length > 1) {
-      const rm = document.createElement("button"); rm.className = "rm"; rm.textContent = "×"; rm.title = "remove layer";
-      rm.onclick = () => { arch.splice(i, 1); renderArchEditor(); morphTo({ type: "remove", at: i }); };
-      node.appendChild(rm);
-    }
-    box.appendChild(node);
-  });
-  if (hidden.length < MAX_LAYERS) {
-    const add = document.createElement("button"); add.className = "arch-add"; add.textContent = "+ layer";
-    add.onclick = () => {
-      const at = arch.length - 1;              // new layer sits just before the output layer
-      arch.splice(at, 0, 32); renderArchEditor(); morphTo({ type: "add", at });
-    };
-    box.appendChild(add);
-  }
-  const fixedOut = document.createElement("div"); fixedOut.className = "arch-node fixed"; fixedOut.innerHTML = `<b>10</b><small>digits</small>`; box.appendChild(fixedOut);
 }
 
 // ---------- boot ----------
 async function boot() {
   els.layers = $("#layers"); els.accCanvas = $("#acc-curve"); els.digits = $("#digits");
   els.acc = $("#acc-val"); els.steps = $("#step-val"); els.ms = $("#ms-val");
-  els.play = $("#play"); els.archEditor = $("#arch-editor");
+  els.play = $("#play");
 
   if (!navigator.gpu) { $("#demo").classList.add("nogpu"); $("#nogpu-msg").hidden = false; return; }
   try {
@@ -281,7 +317,6 @@ async function boot() {
   engine = new GPUEngine(device, ruleBundle);
   engine.prop = 0.8;   // stochastic 80%-of-weights per step — matches how the rule was trained
 
-  renderArchEditor();
   rebuild();
   syncStatus();
   loop();
@@ -289,7 +324,11 @@ async function boot() {
   $("#play").onclick = () => { playing = !playing; syncStatus(); };
   $("#step").onclick = async () => { if (morphing) return; engine.step(1); steps++; await refresh(); syncStatus(); };
   $("#reset").onclick = rebuild;
-  $("#speed").oninput = (e) => { speed = +e.target.value; $("#speed-val").textContent = "lvl " + speed; };
+  $("#speed").oninput = (e) => {
+    const v = +e.target.value, mx = +e.target.max;
+    if (v >= mx) { targetRate = Infinity; $("#speed-val").textContent = "max"; }
+    else { targetRate = v / 2; $("#speed-val").textContent = targetRate.toFixed(1) + "/s"; }   // v/2: 0.5 -> 10 steps/s
+  };
 }
 
 boot();

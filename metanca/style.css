@@ -1,7 +1,7 @@
 :root{
   --paper:#f7f8fa; --ink:#12151c; --ink-soft:#3a4150; --line:#dfe3ea;
   --substrate:#0d1017; --substrate-2:#151a25; --substrate-line:#232a39;
-  --teal:#1f9e8f; --coral:#e8623a; --rule:#6c5cff; --rule-dim:#8b7dff;
+  --teal:#38d6be; --coral:#ff7c50; --rule:#6c5cff; --rule-dim:#8b7dff;
   --paper-dim:#6b7280;
   --serif:"Newsreader",Georgia,serif;
   --disp:"Space Grotesk",system-ui,sans-serif;
@@ -47,14 +47,30 @@ em{font-style:italic;color:var(--ink)}
 .sw{width:12px;height:12px;border-radius:2px;display:inline-block}
 .sw.teal{background:var(--teal)} .sw.coral{background:var(--coral)}
 
-.layers{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;background:var(--substrate-2);
-  border:1px solid var(--substrate-line);border-radius:12px;padding:1.1rem;min-height:260px}
-.layer-fig{margin:0;display:flex;flex-direction:column;align-items:center;gap:.5rem}
+.layers{display:flex;align-items:flex-start;justify-content:center;gap:.35rem;flex-wrap:wrap;background:var(--substrate-2);
+  border:1px solid var(--substrate-line);border-radius:12px;padding:1.1rem 1.1rem 1.3rem;min-height:260px}
+.layer-fig{margin:0;display:flex;flex-direction:column;align-items:center;gap:.45rem;position:relative}
 .layer-fig canvas{background:var(--substrate);border-radius:5px;image-rendering:pixelated;
-  box-shadow:0 0 0 1px var(--substrate-line), 0 6px 18px rgba(0,0,0,.35)}
-.layer-fig figcaption{font-family:var(--mono);font-size:.66rem;text-align:center;color:#8b94a8;line-height:1.4}
+  max-width:100%;height:auto;box-shadow:0 0 0 1px var(--substrate-line), 0 6px 18px rgba(0,0,0,.35)}
+.layer-fig figcaption{font-family:var(--mono);font-size:.72rem;text-align:center;color:#8b94a8;line-height:1.4}
 .layer-fig .lname{display:block;color:#b6bece}
-.flow{color:var(--rule);font-size:1.2rem;opacity:.7}
+.layer-fig .ldim{display:block;margin-top:.15rem;font-size:1rem;font-weight:600;color:#dbe0ea;letter-spacing:.01em}
+.layer-fig .d-out.edit{color:var(--rule-dim)}   /* the slider-controlled dimension */
+/* inline layer controls */
+.layer-slider{max-width:100%;margin:.1rem 0 0;accent-color:var(--rule);cursor:pointer}
+.layer-rm{position:absolute;top:-9px;right:-9px;width:26px;height:26px;border-radius:50%;padding:0;
+  display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid #56617a;background:var(--substrate-2);color:#eef1f6;cursor:pointer;transition:.15s;box-shadow:0 2px 6px rgba(0,0,0,.45)}
+.layer-rm svg{width:13px;height:13px}
+.layer-rm:hover{border-color:var(--coral);background:var(--coral);color:#fff;transform:scale(1.08)}
+/* insert-layer gaps: flow arrow + "+" button, vertically centered on the canvases */
+.flow-gap{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.55rem;min-height:260px}
+.flow{display:inline-flex;align-items:center;justify-content:center;color:var(--rule);opacity:.75}
+.flow svg{width:26px;height:26px}
+.gap-add{width:27px;height:27px;border-radius:50%;padding:0;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid #3f4a62;background:var(--substrate-2);color:var(--rule-dim);cursor:pointer;transition:.15s;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.gap-add svg{width:14px;height:14px}
+.gap-add:hover{border-color:var(--rule);background:var(--rule);color:#fff;transform:scale(1.1)}
 
 .metrics{background:var(--substrate-2);border:1px solid var(--substrate-line);border-radius:12px;padding:1.2rem}
 .metric-num{font-family:var(--disp);font-weight:700;font-size:2.8rem;line-height:1;color:#fff;letter-spacing:-.02em}
@@ -87,27 +103,14 @@ em{font-style:italic;color:var(--ink)}
 .btn.primary:hover{filter:brightness(1.1)}
 .speed{margin-left:auto;font-family:var(--mono);font-size:.78rem;color:#8b94a8;display:flex;align-items:center;gap:.5rem}
 input[type=range]{accent-color:var(--rule)}
+.speed #speed{width:130px;flex:none}                 /* fixed width so the value's length can't resize it */
+.speed #speed-val{display:inline-block;min-width:6ch}
 
-/* arch editor */
-.arch-panel{max-width:64rem;margin:2rem auto 0;background:var(--substrate-2);
-  border:1px solid var(--substrate-line);border-radius:12px;padding:1.3rem 1.4rem}
-.arch-title{font-family:var(--disp);font-weight:500;color:#fff;margin-bottom:1.1rem}
-.arch-title span{font-family:var(--serif);font-weight:400;font-style:italic;color:#8b94a8;font-size:.95rem}
-.arch-editor{display:flex;align-items:flex-end;gap:.7rem;flex-wrap:wrap}
-.arch-node{background:var(--substrate);border:1px solid var(--substrate-line);border-radius:8px;
-  padding:.7rem .8rem;min-width:84px;text-align:center;position:relative}
-.arch-node b{font-family:var(--disp);font-size:1.3rem;color:#fff;display:block}
-.arch-node small{font-family:var(--mono);font-size:.62rem;color:#7b8499;text-transform:uppercase;letter-spacing:.08em}
-.arch-node.fixed{opacity:.7;border-style:dashed}
-.arch-node input[type=range]{width:100%;margin-top:.5rem}
-.arch-node .rm{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;
-  border:1px solid var(--substrate-line);background:var(--substrate-2);color:#aab2c2;cursor:pointer;font-size:.8rem;line-height:1}
-.arch-node .rm:hover{border-color:var(--coral);color:var(--coral)}
-.arch-add{align-self:center;background:transparent;border:1px dashed var(--rule);color:var(--rule-dim);
-  border-radius:8px;padding:.7rem .9rem;cursor:pointer;font-family:var(--disp);font-size:.85rem}
-.arch-add:hover{background:rgba(108,92,255,.1)}
-.demo-foot{max-width:var(--measure);margin:1.8rem auto 0;color:#8b94a8;font-size:.98rem}
-.demo.nogpu .demo-grid,.demo.nogpu .controls,.demo.nogpu .arch-panel{opacity:.35;pointer-events:none}
+/* inline arch hint (below the weight field) */
+.arch-hint{max-width:52rem;margin:.9rem auto 0;color:#8b94a8;font-size:.86rem;line-height:1.55;font-style:italic}
+.arch-hint b{color:var(--rule-dim);font-style:normal;font-family:var(--mono);font-weight:600}
+.arch-hint .archs{color:#dbe0ea}
+.demo.nogpu .demo-grid,.demo.nogpu .controls{opacity:.35;pointer-events:none}
 
 /* ---------- prose ---------- */
 .prose{max-width:var(--measure);margin:0 auto;padding:0 1.5rem 6rem;position:relative}
